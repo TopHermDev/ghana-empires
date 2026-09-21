@@ -25,6 +25,7 @@ signal city_selected(city)
 signal hex_clicked(hex: Vector2i)
 signal hex_hovered(hex: Vector2i)
 signal hex_unhovered
+signal hex_right_clicked(hex: Vector2i)
 
 ## Diplomacy signals.
 signal diplomacy_proposal(from_faction: int, to_faction: int, action: String)

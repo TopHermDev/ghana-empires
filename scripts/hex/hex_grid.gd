@@ -17,6 +17,12 @@ var highlighted_hex: Vector2i = Vector2i(-1, -1)
 ## Selected hex.
 var selected_hex: Vector2i = Vector2i(-1, -1)
 
+## Movement range overlay (hexes reachable by selected unit).
+var movement_range: Dictionary = {}
+
+## Attack range overlay (hexes that can be attacked).
+var attack_range: Dictionary = {}
+
 ## Terrain colors for placeholder rendering.
 var terrain_colors = {
 	"grassland": Color(0.4, 0.7, 0.3),
@@ -43,6 +49,12 @@ func _draw() -> void:
 			var pos = HexUtils.hex_to_pixel(hex, hex_size)
 			var color = _get_hex_color(hex)
 
+			# Apply overlays
+			if movement_range.has(hex):
+				color = color.lerp(Color(0.2, 0.8, 0.2), 0.4)
+			elif attack_range.has(hex):
+				color = color.lerp(Color(0.8, 0.2, 0.2), 0.4)
+
 			# Highlight selected hex
 			if hex == selected_hex:
 				color = color.lightened(0.3)
@@ -66,6 +78,12 @@ func _input(event: InputEvent) -> void:
 				selected_hex = hex
 				queue_redraw()
 				SignalBus.hex_clicked.emit(hex)
+
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			# Right click for move command
+			var hex = _get_hex_at_mouse(event.position)
+			if HexUtils.hex_in_bounds(hex, Vector2i(map_width, map_height)):
+				SignalBus.hex_right_clicked.emit(hex)
 
 ## Generate the map with random terrain.
 func _generate_map() -> void:
@@ -138,4 +156,35 @@ func get_terrain(hex: Vector2i) -> String:
 ## Set terrain at a hex.
 func set_terrain(hex: Vector2i, terrain: String) -> void:
 	map_data[hex] = terrain
+	queue_redraw()
+
+## Show movement range for a unit.
+func show_movement_range(unit) -> void:
+	movement_range.clear()
+	attack_range.clear()
+
+	if unit:
+		var reachable = unit.get_movement_range(map_data)
+		for entry in reachable:
+			movement_range[entry["hex"]] = entry["cost"]
+
+	queue_redraw()
+
+## Show attack range for a unit.
+func show_attack_range(unit) -> void:
+	movement_range.clear()
+	attack_range.clear()
+
+	if unit:
+		var attack_hexes = HexUtils.hex_range(unit.hex_position, unit.unit_data.get("range", 1))
+		for hex in attack_hexes:
+			if hex != unit.hex_position:
+				attack_range[hex] = true
+
+	queue_redraw()
+
+## Clear all overlays.
+func clear_overlays() -> void:
+	movement_range.clear()
+	attack_range.clear()
 	queue_redraw()
