@@ -19,6 +19,9 @@ var unit_info_panel = null
 ## City screen.
 var city_screen = null
 
+## AI controllers for non-player factions.
+var ai_controllers: Dictionary = {}
+
 ## Current game state.
 ## States: playing, unit_selected, unit_moving, city_selected
 var game_state = "playing"
@@ -67,6 +70,9 @@ func _ready() -> void:
 	_spawn_starting_cities()
 	_spawn_starting_units()
 
+	# Initialize AI for non-player factions
+	_init_ai()
+
 func _spawn_starting_cities() -> void:
 	# Ashanti cities (center-south)
 	city_manager.spawn_city("kumasi", Vector2i(28, 30), 0)
@@ -101,6 +107,15 @@ func _spawn_starting_units() -> void:
 	# Mamprusi units (near Mampong)
 	unit_manager.spawn_unit("mamprusi_spearman", Vector2i(44, 10), 3)
 	unit_manager.spawn_unit("scout", Vector2i(46, 11), 3)
+
+func _init_ai() -> void:
+	var ai_script = preload("res://scripts/game/ai/ai_controller.gd")
+	for i in range(1, 4):  # Factions 1-3 are AI
+		var ai = ai_script.new()
+		ai.name = "AI_" + str(i)
+		add_child(ai)
+		ai.setup(i, unit_manager, city_manager, hex_grid)
+		ai_controllers[i] = ai
 
 func _on_hex_clicked(hex: Vector2i) -> void:
 	# Check if clicking on a city first
@@ -191,7 +206,7 @@ func _on_city_deselected() -> void:
 		game_state = "playing"
 
 func _on_turn_started(turn_number: int) -> void:
-	# Process city production for the current faction
+	# Process city production for the current faction (player)
 	var completed = city_manager.process_turn(GameManager.selected_faction)
 
 	# Spawn completed units near their cities
@@ -204,11 +219,32 @@ func _on_turn_started(turn_number: int) -> void:
 	# Reset units for the faction
 	unit_manager.end_turn(GameManager.selected_faction)
 
+	# Process AI turns for all non-player factions
+	for faction_id in ai_controllers:
+		if faction_id != GameManager.selected_faction:
+			var ai = ai_controllers[faction_id]
+			ai.execute_turn()
+			# Process AI city production and unit resets
+			var ai_completed = city_manager.process_turn(faction_id)
+			for entry in ai_completed:
+				var city = entry["city"]
+				var unit_id = entry["unit_id"]
+				_spawn_unit_near_city(city, unit_id)
+			unit_manager.end_turn(faction_id)
+
 	# Update hex grid
 	hex_grid.queue_redraw()
 
 	# Emit turn ended for listeners
 	SignalBus.turn_ended.emit(turn_number)
+
+	# Show season warning
+	if GameManager.is_rainy():
+		SignalBus.show_message.emit("Rainy Season: Movement costs +1", "warning")
+	elif GameManager.is_harmattan():
+		SignalBus.show_message.emit("Harmattan: Reduced visibility", "warning")
+	elif GameManager.current_season == 0:
+		SignalBus.show_message.emit("Dry Season: Trade income +25%", "info")
 
 	print("Turn ", turn_number, " started for faction ", GameManager.selected_faction,
 		" | Season: ", GameManager.get_season_name())
