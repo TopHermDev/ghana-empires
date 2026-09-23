@@ -50,6 +50,20 @@ func is_rainy() -> bool:
 func is_harmattan() -> bool:
 	return current_season == 1
 
+## Get movement cost modifier for current season.
+## Rainy season: +1 to all movement costs (applied as flat addition).
+func get_season_movement_modifier() -> int:
+	if is_rainy():
+		return 1
+	return 0
+
+## Get trade income modifier for current season.
+## Dry season: +25% trade income.
+func get_season_trade_modifier() -> float:
+	match current_season:
+		0: return 1.25  # Dry season: +25%
+		_: return 1.0
+
 ## Initialize faction data.
 func _init_factions() -> void:
 	factions = [

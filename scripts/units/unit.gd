@@ -36,6 +36,9 @@ var move_speed: float = 0.1  # Seconds per hex
 ## Visual representation.
 var hex_size: float = 32.0
 
+## Reference to map_data dictionary (set by UnitManager after spawn).
+var map_data: Dictionary = {}
+
 ## Initialize unit with data.
 func setup(data: Dictionary, pos: Vector2i, faction: int, size: float) -> void:
 	unit_data = data
@@ -56,13 +59,22 @@ func reset_turn() -> void:
 	movement_left = max_movement
 	has_acted = false
 
+## Check if unit can traverse this terrain type.
+func can_traverse_terrain(terrain: String) -> bool:
+	if terrain in ["ocean", "coast"]:
+		var special = unit_data.get("special", "")
+		return special == "amphibious" or special == "naval"
+	return true
+
 ## Check if unit can move to a hex.
 func can_move_to(hex: Vector2i, map_data: Dictionary) -> bool:
 	if movement_left <= 0:
 		return false
 
 	var terrain = map_data.get(hex, "grassland")
-	var cost = UnitData.get_terrain_cost(terrain)
+	if not can_traverse_terrain(terrain):
+		return false
+	var cost = UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
 	return cost <= movement_left
 
 ## Get movement range (all hexes reachable this turn).
@@ -88,7 +100,9 @@ func get_movement_range(map_data: Dictionary) -> Array:
 		for neighbor in neighbors:
 			if not visited.has(neighbor):
 				var terrain = map_data.get(neighbor, "grassland")
-				var move_cost = UnitData.get_terrain_cost(terrain)
+				if not can_traverse_terrain(terrain):
+					continue
+				var move_cost = UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
 				var new_cost = current_cost + move_cost
 
 				if new_cost <= movement_left:
@@ -115,9 +129,9 @@ func _process(delta: float) -> void:
 		var next_hex = current_path.pop_front()
 		var new_pos = HexUtils.hex_to_pixel(next_hex, hex_size)
 
-		# Calculate movement cost
-		var terrain = "grassland"  # TODO: Get from map_data
-		var cost = UnitData.get_terrain_cost(terrain)
+		# Calculate movement cost from actual terrain
+		var terrain = map_data.get(next_hex, "grassland")
+		var cost = UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
 		movement_left = max(0, movement_left - cost)
 
 		# Emit signal
@@ -170,14 +184,13 @@ func _draw() -> void:
 	var hp_ratio = float(hp) / float(max_hp)
 
 	draw_rect(
-		Vector2(-bar_width / 2, bar_y),
-		Vector2(bar_width, bar_height),
+		Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width, bar_height)),
 		Color(0.2, 0.2, 0.2)
 	)
+	var hp_color = Color(0.2, 0.8, 0.2) if hp_ratio > 0.5 else Color(0.8, 0.2, 0.2)
 	draw_rect(
-		Vector2(-bar_width / 2, bar_y),
-		Vector2(bar_width * hp_ratio, bar_height),
-		Color(0.2, 0.8, 0.2) if hp_ratio > 0.5 else Color(0.8, 0.2, 0.2)
+		Rect2(Vector2(-bar_width / 2, bar_y), Vector2(bar_width * hp_ratio, bar_height)),
+		hp_color
 	)
 
 	# Draw unit initial

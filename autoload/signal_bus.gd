@@ -20,6 +20,7 @@ signal city_captured(city, new_owner: int)
 signal city_production_complete(city, item: String)
 signal city_population_changed(city, old_pop: int, new_pop: int)
 signal city_selected(city)
+signal city_deselected
 
 ## Map signals.
 signal hex_clicked(hex: Vector2i)

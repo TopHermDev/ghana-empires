@@ -1,0 +1,16 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/unit_info_panel.gd" id="1_panel"]
+
+[node name="UnitInfoPanel" type="PanelContainer"]
+anchors_preset = 3
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = -160.0
+offset_right = 220.0
+offset_bottom = -10.0
+grow_vertical = 0
+script = ExtResource("1_panel")

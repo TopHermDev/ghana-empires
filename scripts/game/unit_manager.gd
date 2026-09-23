@@ -16,6 +16,8 @@ var hex_grid = null
 ## Initialize with hex grid reference.
 func setup(grid) -> void:
 	hex_grid = grid
+	# Clean up dead units when they are destroyed
+	SignalBus.unit_destroyed.connect(_on_unit_destroyed)
 
 ## Spawn a unit at a hex position.
 func spawn_unit(unit_id: String, hex_pos: Vector2i, faction_id: int) -> var:
@@ -27,6 +29,7 @@ func spawn_unit(unit_id: String, hex_pos: Vector2i, faction_id: int) -> var:
 	var unit = unit_scene.instantiate()
 	add_child(unit)
 	unit.setup(data, hex_pos, faction_id, hex_grid.hex_size)
+	unit.map_data = hex_grid.map_data
 	units.append(unit)
 	return unit
 
@@ -93,21 +96,49 @@ func process_combat(attacker, defender) -> Dictionary:
 	var attacker_attack = attacker.get_attack()
 	var defender_defense = defender.get_defense()
 
+	# Apply special abilities
+	var attacker_special = attacker.unit_data.get("special", "")
+	var defender_special = defender.unit_data.get("special", "")
+
+	# bonus_vs_infantry: +50% damage vs non-cavalry, non-ranged units
+	if attacker_special == "bonus_vs_infantry":
+		var def_type = defender.unit_data.get("special", "")
+		if def_type != "ranged_cavalry" and def_type != "naval":
+			attacker_attack = int(attacker_attack * 1.5)
+
+	# bonus_vs_cavalry: +50% damage vs cavalry units
+	if attacker_special == "bonus_vs_cavalry":
+		var def_type = defender.unit_data.get("special", "")
+		if def_type == "ranged_cavalry" or def_type == "first_strike":
+			attacker_attack = int(attacker_attack * 1.5)
+
+	# first_strike: attacker attacks before defender can counter
+	var skip_counter = (attacker_special == "first_strike")
+
 	# Simple combat formula
 	var damage = max(1, attacker_attack - defender_defense / 2)
 	damage = int(damage * (0.8 + randf() * 0.4))  # Add randomness
 
+	SignalBus.unit_attacked.emit(attacker, defender, damage)
 	defender.take_damage(damage)
 	attacker.has_acted = true
 
-	# Counter-attack if defender survives and is adjacent
+	# Counter-attack if defender survives and is in range
 	var counter_damage = 0
-	if defender.hp > 0:
+	if defender.hp > 0 and not skip_counter:
 		var dist = HexUtils.hex_distance(attacker.hex_position, defender.hex_position)
 		if dist <= defender.unit_data.get("range", 1):
-			counter_damage = max(1, defender.get_defense() / 2 - attacker.get_defense() / 3)
-			counter_damage = int(counter_damage * (0.8 + randf() * 0.4))
-			attacker.take_damage(counter_damage)
+			# siege_terror: defender loses attack when facing siege units
+			if defender_special == "siege_terror":
+				pass  # No counter from terrified units
+			else:
+				var counter_attack = defender.get_attack()
+				# capital_bonus: +4 defense when near own capital (simplified: always active)
+				if defender_special == "capital_bonus":
+					counter_attack = int(counter_attack * 1.25)
+				counter_damage = max(1, counter_attack / 2 - attacker.get_defense() / 3)
+				counter_damage = int(counter_damage * (0.8 + randf() * 0.4))
+				attacker.take_damage(counter_damage)
 
 	return {
 		"damage_dealt": damage,
@@ -140,3 +171,10 @@ func get_faction_vision(faction_id: int) -> Dictionary:
 			for hex in hexes:
 				vision[hex] = true
 	return vision
+
+## Handle unit destroyed signal - clean up from array.
+func _on_unit_destroyed(unit) -> void:
+	if unit in units:
+		units.erase(unit)
+	if selected_unit == unit:
+		deselect_unit()
