@@ -1,0 +1,56 @@
+{
+  "gold": {
+    "name": "Gold Nuggets",
+    "glyph": "Au",
+    "terrains": ["hills", "mountains"],
+    "gold": 5,
+    "food": 0,
+    "color": [1.0, 0.85, 0.2],
+    "description": "Alluvial gold. Major source of Ashanti wealth."
+  },
+  "kola": {
+    "name": "Kola Grove",
+    "glyph": "K",
+    "terrains": ["forest", "dense_forest"],
+    "gold": 3,
+    "food": 2,
+    "color": [0.7, 0.45, 0.2],
+    "description": "Kola nuts, traded across the whole region."
+  },
+  "ivory": {
+    "name": "Ivory Herd",
+    "glyph": "I",
+    "terrains": ["savanna"],
+    "gold": 4,
+    "food": 1,
+    "color": [0.95, 0.92, 0.8],
+    "description": "Elephant herds. Valuable trade goods."
+  },
+  "salt": {
+    "name": "Salt Pans",
+    "glyph": "S",
+    "terrains": ["coast", "desert"],
+    "gold": 4,
+    "food": 0,
+    "color": [0.9, 0.9, 0.95],
+    "description": "Salt, worth its weight in gold inland."
+  },
+  "iron": {
+    "name": "Iron Ore",
+    "glyph": "Fe",
+    "terrains": ["hills"],
+    "gold": 3,
+    "food": 0,
+    "color": [0.55, 0.55, 0.6],
+    "description": "Ore deposits for smithing and weapons."
+  },
+  "cloth": {
+    "name": "Weaving Village",
+    "glyph": "W",
+    "terrains": ["grassland"],
+    "gold": 3,
+    "food": 2,
+    "color": [0.85, 0.5, 0.6],
+    "description": "Kente and other fine cloth weavers."
+  }
+}

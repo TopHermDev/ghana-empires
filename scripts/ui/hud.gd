@@ -8,6 +8,7 @@ var gold_label: Label
 var faction_label: Label
 var end_turn_button: Button
 var message_label: Label
+var ai_label: Label
 
 func _ready() -> void:
 	layer = 10
@@ -18,6 +19,9 @@ func _ready() -> void:
 	SignalBus.turn_started.connect(_on_turn_started)
 	SignalBus.game_started.connect(_on_game_started)
 	SignalBus.show_message.connect(_on_show_message)
+	SignalBus.ai_thinking.connect(_on_ai_thinking)
+	SignalBus.city_captured.connect(func(_c, _o): _update_display())
+	SignalBus.city_revolted.connect(func(_c, _o): _update_display())
 
 func _build_ui() -> void:
 	# Top bar panel
@@ -100,6 +104,28 @@ func _build_ui() -> void:
 	message_label.visible = false
 	add_child(message_label)
 
+	# "AI thinking..." indicator (centred, above the message label)
+	ai_label = Label.new()
+	ai_label.name = "AILabel"
+	ai_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	ai_label.offset_top = 50
+	ai_label.offset_bottom = 80
+	ai_label.offset_left = -200
+	ai_label.offset_right = 200
+	ai_label.horizontal_alignment = 1
+	ai_label.add_theme_font_size_override("font_size", 16)
+	ai_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.5))
+	ai_label.visible = false
+	add_child(ai_label)
+
+func _on_ai_thinking(active: bool, text: String) -> void:
+	ai_label.text = text
+	ai_label.visible = active
+	# Block starting another turn while factions are still acting.
+	end_turn_button.disabled = active
+	if not active:
+		_update_display()
+
 func _update_display() -> void:
 	if not turn_label:
 		return
@@ -128,10 +154,12 @@ func _get_faction_income() -> int:
 	var city_manager = get_node_or_null("/root/Game/CityManager")
 	if city_manager:
 		for city in city_manager.get_faction_cities(GameManager.selected_faction):
-			income += city.gold_per_turn
+			income += city.get_income()
 	return income
 
 func _on_end_turn_pressed() -> void:
+	if GameManager.turn_processing:
+		return
 	GameManager.next_turn()
 
 func _on_turn_started(turn_number: int) -> void:

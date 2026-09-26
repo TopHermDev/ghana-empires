@@ -39,6 +39,12 @@ var hex_size: float = 32.0
 ## Reference to map_data dictionary (set by UnitManager after spawn).
 var map_data: Dictionary = {}
 
+## How many units share this unit's hex (refreshed by UnitManager).
+var stack_size: int = 1
+
+## Whether this unit is the one drawing the stack badge.
+var is_stack_leader: bool = true
+
 ## Initialize unit with data.
 func setup(data: Dictionary, pos: Vector2i, faction: int, size: float) -> void:
 	unit_data = data
@@ -61,24 +67,34 @@ func reset_turn() -> void:
 
 ## Check if unit can traverse this terrain type.
 func can_traverse_terrain(terrain: String) -> bool:
-	if terrain in ["ocean", "coast"]:
+	if TerrainData.is_water(terrain):
 		var special = unit_data.get("special", "")
 		return special == "amphibious" or special == "naval"
 	return true
 
 ## Check if unit can move to a hex.
-func can_move_to(hex: Vector2i, map_data: Dictionary) -> bool:
+## zoc: hexes exerted by enemy units (entering costs all remaining movement).
+## blocked: hexes that may not be entered at all (occupied, over-stacked).
+func can_move_to(hex: Vector2i, map_data: Dictionary, zoc: Dictionary = {}, blocked: Dictionary = {}) -> bool:
 	if movement_left <= 0:
+		return false
+	if blocked.has(hex):
 		return false
 
 	var terrain = map_data.get(hex, "grassland")
 	if not can_traverse_terrain(terrain):
 		return false
-	var cost = UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
-	return cost <= movement_left
+
+	# The hex must at least be affordable; a zone of control hex then
+	# consumes the whole remaining budget once entered.
+	return _base_move_cost(terrain) <= movement_left
+
+## Terrain movement cost including the current season modifier.
+func _base_move_cost(terrain: String) -> int:
+	return UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
 
 ## Get movement range (all hexes reachable this turn).
-func get_movement_range(map_data: Dictionary) -> Array:
+func get_movement_range(map_data: Dictionary, zoc: Dictionary = {}, blocked: Dictionary = {}) -> Array:
 	var reachable = []
 	var visited = {}
 	var queue = [{"hex": hex_position, "cost": 0}]
@@ -95,18 +111,31 @@ func get_movement_range(map_data: Dictionary) -> Array:
 		if current_cost > 0:
 			reachable.append({"hex": current_hex, "cost": current_cost})
 
+		# A hex entered from a zone of control exhausts all movement,
+		# so nothing can be reached beyond it this turn.
+		if current_cost >= movement_left:
+			continue
+
 		# Check neighbors
 		var neighbors = HexUtils.hex_neighbors(current_hex)
 		for neighbor in neighbors:
-			if not visited.has(neighbor):
-				var terrain = map_data.get(neighbor, "grassland")
-				if not can_traverse_terrain(terrain):
-					continue
-				var move_cost = UnitData.get_terrain_cost(terrain) + GameManager.get_season_movement_modifier()
-				var new_cost = current_cost + move_cost
+			if visited.has(neighbor) or blocked.has(neighbor):
+				continue
+			var terrain = map_data.get(neighbor, "grassland")
+			if not can_traverse_terrain(terrain):
+				continue
 
-				if new_cost <= movement_left:
-					queue.append({"hex": neighbor, "cost": new_cost})
+			var base_cost = _base_move_cost(terrain)
+			# Must be able to afford the step from where we stand.
+			if base_cost > movement_left - current_cost:
+				continue
+
+			# Stepping into a zone of control burns every remaining point,
+			# so the total cost of reaching that hex is the whole budget.
+			var new_cost = movement_left if zoc.has(neighbor) else current_cost + base_cost
+
+			if new_cost <= movement_left:
+				queue.append({"hex": neighbor, "cost": new_cost})
 
 	return reachable
 
@@ -144,6 +173,7 @@ func _process(delta: float) -> void:
 		# Check if path complete
 		if current_path.size() == 0:
 			is_moving = false
+			SignalBus.unit_arrived.emit(self)
 
 ## Take damage.
 func take_damage(amount: int) -> void:
@@ -160,9 +190,13 @@ func heal(amount: int) -> void:
 func get_attack() -> int:
 	return unit_data.get("attack", 0)
 
-## Get defense value.
+## Get defense value (including terrain and city bonuses when defending).
 func get_defense() -> int:
 	return unit_data.get("defense", 0)
+
+## Terrain defense bonus for the hex this unit occupies.
+func get_terrain_defense_bonus() -> int:
+	return TerrainData.get_defense(map_data.get(hex_position, "grassland"))
 
 ## Get vision range.
 func get_vision_range() -> int:
@@ -170,12 +204,23 @@ func get_vision_range() -> int:
 		return 3
 	return 2
 
-## Draw the unit.
+## --- RENDERING -------------------------------------------------------
+
+## Draw the unit: a faction-specific silhouette, unit glyph and HP bar.
 func _draw() -> void:
-	# Draw unit circle
 	var color = _get_faction_color()
-	draw_circle(Vector2.ZERO, hex_size * 0.4, color)
-	draw_arc(Vector2.ZERO, hex_size * 0.4, 0, TAU, 32, color.darkened(0.3), 2.0)
+	var outline = color.darkened(0.4)
+
+	_draw_faction_shape(color, outline)
+
+	# Unit glyph (first letter of the unit name)
+	var font = ThemeDB.fallback_font
+	var unit_name: String = unit_data.get("name", "Unit")
+	var glyph = unit_name.substr(0, 1)
+	var font_size = int(hex_size * 0.55)
+	var text_width = font.get_string_size(glyph, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+	draw_string(font, Vector2(-text_width / 2.0, font_size * 0.35), glyph,
+			HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, _get_glyph_color())
 
 	# Draw HP bar
 	var bar_width = hex_size * 0.8
@@ -193,10 +238,54 @@ func _draw() -> void:
 		hp_color
 	)
 
-	# Draw unit initial
-	var initial = unit_data.get("name", "U")[0]
-	# Note: In Godot 4, we'd use a Label node for text, but for simplicity
-	# we'll just draw the colored circle for now
+	# Stack badge: only the leader of the stack draws it.
+	if stack_size > 1 and is_stack_leader:
+		var badge_pos = Vector2(hex_size * 0.45, hex_size * 0.45)
+		draw_circle(badge_pos, 8.0, Color(0, 0, 0, 0.75))
+		var count = str(stack_size)
+		var count_width = font.get_string_size(count, HORIZONTAL_ALIGNMENT_CENTER, -1, 11).x
+		draw_string(font, badge_pos + Vector2(-count_width / 2.0, 4.0), count,
+				HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color.WHITE)
+
+## Silhouette differs per faction so stacks and sides read at a glance.
+func _draw_faction_shape(color: Color, outline: Color) -> void:
+	var r = hex_size * 0.4
+	match faction_id:
+		0:  # Ashanti - circle
+			draw_circle(Vector2.ZERO, r, color)
+			draw_arc(Vector2.ZERO, r, 0, TAU, 32, outline, 2.0)
+		1:  # Dagbon - diamond
+			var pts = PackedVector2Array([
+				Vector2(0, -r), Vector2(r, 0), Vector2(0, r), Vector2(-r, 0)
+			])
+			draw_colored_polygon(pts, color)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), outline, 2.0)
+		2:  # Fante - triangle
+			var pts = PackedVector2Array([
+				Vector2(0, -r), Vector2(r * 0.9, r * 0.75), Vector2(-r * 0.9, r * 0.75)
+			])
+			draw_colored_polygon(pts, color)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), outline, 2.0)
+		3:  # Mamprusi - hexagon
+			var pts = PackedVector2Array()
+			for i in range(6):
+				var angle = PI / 3 * i - PI / 2
+				pts.append(Vector2(cos(angle), sin(angle)) * r)
+			draw_colored_polygon(pts, color)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), outline, 2.0)
+		_:  # Rebels / neutral - square
+			var rect = Rect2(Vector2(-r, -r), Vector2(r * 2, r * 2))
+			draw_rect(rect, color)
+			draw_rect(rect, outline, false, 2.0)
+
+## Glyph colour that stays readable on the faction colour.
+func _get_glyph_color() -> Color:
+	match faction_id:
+		0: return Color(0.15, 0.1, 0.0)   # on gold
+		1: return Color(0.95, 0.92, 0.85) # on brown
+		2: return Color(0.95, 0.97, 1.0)  # on blue
+		3: return Color(0.95, 0.92, 1.0)  # on purple
+		_: return Color(0.1, 0.1, 0.1)
 
 ## Get color based on faction.
 func _get_faction_color() -> Color:
@@ -205,4 +294,4 @@ func _get_faction_color() -> Color:
 		1: return Color(0.6, 0.4, 0.2)   # Dagbon - Brown
 		2: return Color(0.2, 0.5, 0.7)   # Fante - Blue
 		3: return Color(0.5, 0.3, 0.6)   # Mamprusi - Purple
-		_: return Color(0.5, 0.5, 0.5)   # Neutral - Gray
+		_: return Color(0.5, 0.5, 0.5)   # Rebels - Gray

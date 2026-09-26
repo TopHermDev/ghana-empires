@@ -237,18 +237,6 @@ static func get_faction_units(faction: String) -> Array:
 			result.append(units[key])
 	return result
 
-## Get terrain movement cost.
+## Get terrain movement cost (delegates to TerrainData / data/terrain.json).
 static func get_terrain_cost(terrain: String) -> int:
-	match terrain:
-		"grassland", "savanna":
-			return 1
-		"forest", "hills", "desert":
-			return 2
-		"dense_forest", "mountains":
-			return 3
-		"river":
-			return 2
-		"coast", "ocean":
-			return 1  # Naval units only
-		_:
-			return 1
+	return TerrainData.get_move_cost(terrain)

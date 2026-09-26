@@ -1,0 +1,44 @@
+{
+  "farm": {
+    "name": "Farmland",
+    "cost": 40,
+    "effects": {"food": 4},
+    "description": "Clears and irrigated fields. Faster city growth."
+  },
+  "market": {
+    "name": "Market",
+    "cost": 60,
+    "effects": {"gold_per_turn": 5, "happiness": 5},
+    "description": "Weekly market. Raises gold income and civic pride."
+  },
+  "granary": {
+    "name": "Granary",
+    "cost": 50,
+    "effects": {"food": 3, "happiness": 5},
+    "description": "Stores grain against bad seasons."
+  },
+  "shrine": {
+    "name": "Sacred Grove",
+    "cost": 45,
+    "effects": {"happiness": 12},
+    "description": "A place of ritual. Greatly lifts happiness."
+  },
+  "barracks": {
+    "name": "Barracks",
+    "cost": 70,
+    "effects": {"production_speed": 1, "defense": 1},
+    "description": "Trains and quarters soldiers."
+  },
+  "palisade": {
+    "name": "Palisade",
+    "cost": 80,
+    "effects": {"defense": 4},
+    "description": "Timber wall. Large defensive bonus when defending the city."
+  },
+  "workshop": {
+    "name": "Workshop",
+    "cost": 90,
+    "effects": {"production_speed": 2},
+    "description": "Skilled artisans speed up all construction."
+  }
+}
